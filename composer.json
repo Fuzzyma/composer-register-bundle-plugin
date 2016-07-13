@@ -1,0 +1,26 @@
+{
+    "name": "fuzzyma/composer-register-bundle-plugin",
+    "description": "A composer plugin to register your symfony packages to the AppKernel",
+    "type": "composer-plugin",
+    "require": {
+        "composer-plugin-api": "^1.0",
+        "composer/composer": "^1.1",
+        "sensio/generator-bundle": "^3.0"
+    },
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Ulrich-Matthias Schäfer",
+            "email": "ulima.ums@googlemail.com"
+        }
+    ],
+    "minimum-stability": "dev",
+    "extra": {
+        "class": "Fuzzyma\\Composer\\RegisterBundlePlugin\\ComposerRegisterBundlePlugin"
+    },
+    "autoload": {
+        "psr-4": {
+            "Fuzzyma\\Composer\\RegisterBundlePlugin\\": ""
+        }
+    }
+}
