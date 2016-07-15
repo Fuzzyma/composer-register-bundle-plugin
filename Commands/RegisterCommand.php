@@ -8,33 +8,136 @@
 namespace Fuzzyma\Composer\RegisterBundlePlugin\Commands;
 
 use Composer\Command\BaseCommand;
+use Composer\Installer;
 use Composer\Installer\PackageEvent;
 use Composer\Package\PackageInterface;
 use Sensio\Bundle\GeneratorBundle\Manipulator\KernelManipulator;
+use Symfony\Component\Config\Definition\Exception\Exception;
+use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Console\Question\Question;
+
+
+// include autoloader
+require_once 'vendor/autoload.php';
+
 
 class RegisterCommand extends BaseCommand
 {
+
     protected function configure()
     {
         $this->setName('register')
-            ->addArgument('package', InputArgument::IS_ARRAY, 'Packages / Namespaces to register in the AppKernel')
-            ->addOption('--ns', null, InputOption::VALUE_NONE, 'Argument is namespace');
+            ->setDefinition([
+                new InputArgument('packages', InputArgument::IS_ARRAY, 'Packages / Namespaces to register in the AppKernel'),
+                new InputOption('namespace', 's', InputOption::VALUE_NONE, 'Argument is namespace'),
+                new InputOption('no-install', null, InputOption::VALUE_NONE, 'If Package is not present it won\'t be installed'),
+
+                // mirroring Require command
+                new InputOption('dev', null, InputOption::VALUE_NONE, 'Add requirement to require-dev.'),
+                new InputOption('prefer-source', null, InputOption::VALUE_NONE, 'Forces installation from package sources when possible, including VCS information.'),
+                new InputOption('prefer-dist', null, InputOption::VALUE_NONE, 'Forces installation from package dist even for dev versions.'),
+                new InputOption('no-progress', null, InputOption::VALUE_NONE, 'Do not output download progress.'),
+                new InputOption('no-update', null, InputOption::VALUE_NONE, 'Disables the automatic update of the dependencies.'),
+                new InputOption('update-no-dev', null, InputOption::VALUE_NONE, 'Run the dependency update with the --no-dev option.'),
+                new InputOption('update-with-dependencies', null, InputOption::VALUE_NONE, 'Allows inherited dependencies to be updated with explicit dependencies.'),
+                new InputOption('ignore-platform-reqs', null, InputOption::VALUE_NONE, 'Ignore platform requirements (php & ext- packages).'),
+                new InputOption('sort-packages', null, InputOption::VALUE_NONE, 'Sorts packages when adding/updating a new dependency'),
+                new InputOption('optimize-autoloader', 'o', InputOption::VALUE_NONE, 'Optimize autoloader during autoloader dump'),
+                new InputOption('classmap-authoritative', 'a', InputOption::VALUE_NONE, 'Autoload classes from the classmap only. Implicitly enables `--optimize-autoloader`.'),
+            ]);
+    }
+
+    public function getQuestion($question, $default, $sep = ':')
+    {
+        return $default ? sprintf('<info>%s</info> [<comment>%s</comment>]%s ', $question, $default, $sep) : sprintf('<info>%s</info>%s ', $question, $sep);
+    }
+
+    protected function interact(InputInterface $input, OutputInterface $output)
+    {
+        if ($input->getOption('namespace')) return;
+        if ($input->getOption('no-install')) return;
+
+        // get composer instance and read local repository
+        $composer = $this->getComposer(true);
+        $localRepo = $composer->getRepositoryManager()->getLocalRepository();
+
+        $packages = $input->getArgument('packages');
+
+        $installed = array_map(function (PackageInterface $package) {
+            return $package->getName();
+        }, $localRepo->getPackages());
+
+        $toInstall = array_diff($packages, $installed);
+
+        if (count($toInstall)) {
+
+            $questionHelper = $this->getHelper('question');
+
+            $question = new Question($this->getQuestion('Some packages are not present. Do you want to install them first?', 'yes'), 'yes');
+
+            if (!$questionHelper->ask($input, $output, $question)) return;
+
+            $this->install(
+                $output,
+                $toInstall,
+                $input->getOption('dev'),
+                $input->getOption('prefer-source'),
+                $input->getOption('no-progress'),
+                $input->getOption('no-update'),
+                $input->getOption('update-no-dev'),
+                $input->getOption('update-with-dependencies'),
+                $input->getOption('ignore-platform-reqs'),
+                $input->getOption('sort-packages'),
+                $input->getOption('optimize-autoloader'),
+                $input->getOption('classmap-authoritative')
+            );
+
+            $localRepo->reload();
+
+        }
+
+    }
+
+    private function install($output, Array $toInstall, $dev, $preferSource, $noProgress, $noUpdate, $updateNoDev, $updateWithDependencies, $ignorePlatformRegs, $sortPackages, $optimizeAutoloader, $classmapAuthoritative)
+    {
+        $in = [];
+        $in['packages'] = $toInstall;
+
+        if ($dev) $in['--dev'] = true;
+        if ($preferSource) $in['--prefer-source'] = true;
+        if ($noProgress) $in['--no-progress'] = true;
+        if ($noUpdate) $in['--no-update'] = true;
+        if ($updateNoDev) $in['--update-no-dev'] = true;
+        if ($updateWithDependencies) $in['--update-width-dependencies'] = true;
+        if ($ignorePlatformRegs) $in['--ignore-platform-reqs'] = true;
+        if ($sortPackages) $in['--sort-packages'] = true;
+        if ($optimizeAutoloader) $in['--optimize-autoloader'] = true;
+        if ($classmapAuthoritative) $in['--classmap-authoritative'] = true;
+
+        try {
+            if(!$this->getApplication()->find('require')->run(new ArrayInput($in), $output)){
+                throw new Exception('An error occured while installation');
+            };
+        } catch (Exception $e) {
+            $this->getIO()->writeError($e->getMessage());
+            exit;
+        }
+
+
     }
 
     protected function execute(InputInterface $input, OutputInterface $output)
     {
-        // include required files
-        require_once 'vendor/autoload.php';
 
         // get command arguments
-        $packages = $input->getArgument('package');
+        $packages = $input->getArgument('packages');
 
         // in case we got namespaces we just pass them directly to the registerWithNamespace method
-        if ($input->getOption('ns')) {
+        if ($input->getOption('namespace')) {
             foreach ($packages as $ns) {
                 self::registerWithNamespace($ns);
             }
@@ -44,7 +147,6 @@ class RegisterCommand extends BaseCommand
         // get composer instance and read local repository
         $composer = $this->getComposer(true);
         $localRepo = $composer->getRepositoryManager()->getLocalRepository();
-
         $cnt = 0;
 
         // search all packages for the specified one
@@ -92,6 +194,11 @@ class RegisterCommand extends BaseCommand
      */
     private static function registerWithPackage(PackageInterface $package, $output)
     {
+
+        if('symfony-bundle' === $package->getType()){
+            $output->write('<error>'. $package->getName() .' is not a symfony bundle</error>', true);
+            return;
+        }
 
         // get package directory
         $dir = 'vendor/' . $package->getName();
