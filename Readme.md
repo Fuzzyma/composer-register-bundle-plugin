@@ -41,5 +41,6 @@ Just add the following to your composer.json to immediately register a bundle af
 Don't forget to configure your Bundle before using it!
 
 ## Options
-- `--no-install` skips the installation of not-installed packages
+- `--install` installs packages without asking if not installed and
+- `--install=0` skips the installation of not-installed packages
 - All options from `composer install` (v1.2) are available and have the same effect
