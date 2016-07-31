@@ -127,7 +127,7 @@ class RegisterCommand extends BaseCommand
         $in['packages'] = $toInstall;
 
         // we don't want to run install scripts at this point
-        $in['no-script'] = true;
+        $in['--no-script'] = true;
 
         // clone options from input to install command
         if ($dev) $in['--dev'] = true;
