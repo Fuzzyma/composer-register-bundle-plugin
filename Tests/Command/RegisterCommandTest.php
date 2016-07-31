@@ -70,12 +70,16 @@ class RegisterCommandTest extends \PHPUnit_Framework_TestCase{
     }
 
     private function createRegisterCommand($applicationMatcher, $kernelManipulatorMatcher, $input = "", $installationReturn = 0){
+        // set path so autoloader can be required
+        RegisterCommand::setRootDir(__DIR__.'/../../');
+        // mock the Kernelmanipulator
+        RegisterCommand::setKernelManipulator($this->getKernelManipulatorMock($kernelManipulatorMatcher));
+
         $command = new RegisterCommand();
         $command->setComposer($this->getComposerMock());
 
-        // mock the Kernelmanipulator
-        $command::setKernelManipulator($this->getKernelManipulatorMock($kernelManipulatorMatcher));
-        $command::setRootDir(__DIR__.'/../Fixtures/');
+        // set path to fixtures
+        RegisterCommand::setRootDir(__DIR__.'/../Fixtures/');
 
         $application = $this->getApplicationMock($applicationMatcher[0], $applicationMatcher[1], $installationReturn);
         $application->setHelperSet($this->getHelperSet($input));

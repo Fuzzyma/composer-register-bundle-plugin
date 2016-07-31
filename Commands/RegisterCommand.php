@@ -22,7 +22,7 @@ use Symfony\Component\Console\Question\Question;
 
 
 // include autoloader
-require_once __DIR__.'/../vendor/autoload.php';
+//require_once __DIR__.'/../vendor/autoload.php';
 
 
 class RegisterCommand extends BaseCommand
@@ -30,7 +30,13 @@ class RegisterCommand extends BaseCommand
 
     private $runScripts = false;
     private static $kernelManipulator;
-    private static $rootDir = __DIR__.'/../';
+    private static $rootDir = __DIR__.'/../../../../';
+
+    public function __construct()
+    {
+        require_once self::getRootDir().'vendor/autoload.php';
+        parent::__construct();
+    }
 
     protected function configure()
     {
