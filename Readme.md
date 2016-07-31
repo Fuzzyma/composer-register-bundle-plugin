@@ -1,6 +1,7 @@
 #ComposerRegisterBundlePlugin
 
 A composer plugin to register your symfony packages to the AppKernel.
+**Note**, that you need composer in version 1.2 installed to make package install available.
 
 ## Installation
 
@@ -36,3 +37,9 @@ Just add the following to your composer.json to immediately register a bundle af
     "Fuzzyma\\Composer\\RegisterBundlePlugin\\Commands\\RegisterCommand::registerBundle"
 ]
 ```
+
+Don't forget to configure your Bundle before using it!
+
+## Options
+- `--no-install` skips the installation of not-installed packages
+- All options from `composer install` (v1.2) are available and have the same effect

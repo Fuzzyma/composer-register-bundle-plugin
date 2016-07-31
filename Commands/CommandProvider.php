@@ -13,6 +13,6 @@ class CommandProvider implements CommandProviderCapability
 {
     public function getCommands()
     {
-        return array(new RegisterCommand());
+        return [new RegisterCommand()];
     }
 }

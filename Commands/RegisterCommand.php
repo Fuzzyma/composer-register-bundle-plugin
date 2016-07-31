@@ -8,11 +8,11 @@
 namespace Fuzzyma\Composer\RegisterBundlePlugin\Commands;
 
 use Composer\Command\BaseCommand;
-use Composer\Installer;
 use Composer\Installer\PackageEvent;
 use Composer\Package\PackageInterface;
 use Sensio\Bundle\GeneratorBundle\Manipulator\KernelManipulator;
 use Symfony\Component\Config\Definition\Exception\Exception;
+use Symfony\Component\Console\Exception\RuntimeException;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
@@ -22,11 +22,15 @@ use Symfony\Component\Console\Question\Question;
 
 
 // include autoloader
-require_once 'vendor/autoload.php';
+require_once __DIR__.'/../vendor/autoload.php';
 
 
 class RegisterCommand extends BaseCommand
 {
+
+    private $runScripts = false;
+    private static $kernelManipulator;
+    private static $rootDir = __DIR__.'/../';
 
     protected function configure()
     {
@@ -34,7 +38,8 @@ class RegisterCommand extends BaseCommand
             ->setDefinition([
                 new InputArgument('packages', InputArgument::IS_ARRAY, 'Packages / Namespaces to register in the AppKernel'),
                 new InputOption('namespace', 's', InputOption::VALUE_NONE, 'Argument is namespace'),
-                new InputOption('no-install', null, InputOption::VALUE_NONE, 'If Package is not present it won\'t be installed'),
+                new InputOption('install', 'i', InputOption::VALUE_OPTIONAL, 'Set to 0 or 1 to not install / install packages without asking'),
+                new InputOption('no-scripts', null, InputOption::VALUE_NONE, 'Will not run post-install scripts in case of any package being installed'),
 
                 // mirroring Require command
                 new InputOption('dev', null, InputOption::VALUE_NONE, 'Add requirement to require-dev.'),
@@ -59,7 +64,7 @@ class RegisterCommand extends BaseCommand
     protected function interact(InputInterface $input, OutputInterface $output)
     {
         if ($input->getOption('namespace')) return;
-        if ($input->getOption('no-install')) return;
+        if ($input->getOption('install')  === 0 || $input->getOption('install')  === false) return; // when no value is given we treat it as a yes
 
         // get composer instance and read local repository
         $composer = $this->getComposer(true);
@@ -75,11 +80,15 @@ class RegisterCommand extends BaseCommand
 
         if (count($toInstall)) {
 
-            $questionHelper = $this->getHelper('question');
+            if(!$input->getOption('install')){
 
-            $question = new Question($this->getQuestion('Some packages are not present. Do you want to install them first?', 'yes'), 'yes');
+                $questionHelper = $this->getHelper('question');
 
-            if (!$questionHelper->ask($input, $output, $question)) return;
+                $question = new Question($this->getQuestion('Some packages are not present. Do you want to install them first?', 'yes'), 'yes');
+
+                if ('yes' != $questionHelper->ask($input, $output, $question)) return;
+
+            }
 
             $this->install(
                 $output,
@@ -96,7 +105,11 @@ class RegisterCommand extends BaseCommand
                 $input->getOption('classmap-authoritative')
             );
 
+            // reload local repository to match the new dependencies
             $localRepo->reload();
+
+            // activate scripts only when we installed something
+            $this->runScripts = true;
 
         }
 
@@ -107,6 +120,10 @@ class RegisterCommand extends BaseCommand
         $in = [];
         $in['packages'] = $toInstall;
 
+        // we don't want to run install scripts at this point
+        $in['no-script'] = true;
+
+        // clone options from input to install command
         if ($dev) $in['--dev'] = true;
         if ($preferSource) $in['--prefer-source'] = true;
         if ($noProgress) $in['--no-progress'] = true;
@@ -118,13 +135,13 @@ class RegisterCommand extends BaseCommand
         if ($optimizeAutoloader) $in['--optimize-autoloader'] = true;
         if ($classmapAuthoritative) $in['--classmap-authoritative'] = true;
 
+        // try to install the packages
         try {
-            if(!$this->getApplication()->find('require')->run(new ArrayInput($in), $output)){
-                throw new Exception('An error occured while installation');
+            if($this->getApplication()->find('require')->run(new ArrayInput($in), $output)){
+                throw new RuntimeException('An error occured while installation');
             };
-        } catch (Exception $e) {
-            $this->getIO()->writeError($e->getMessage());
-            exit;
+        }catch (Exception $e){
+            throw $e;
         }
 
 
@@ -162,6 +179,11 @@ class RegisterCommand extends BaseCommand
         // warn if packages could not be found
         if (!$cnt) {
             $output->write('<error>Error: Could not find any of given packages</error>', true);
+        }else{
+            if($this->runScripts && !$input->getOption('no-scripts')){
+                // run scripts if needed and not disabled
+                $this->getApplication()->find('run-script')->run(new ArrayInput(['script' => 'post-install-cmd']), $output);
+            }
         }
 
     }
@@ -195,13 +217,13 @@ class RegisterCommand extends BaseCommand
     private static function registerWithPackage(PackageInterface $package, $output)
     {
 
-        if('symfony-bundle' === $package->getType()){
+        if('symfony-bundle' !== $package->getType()){
             $output->write('<error>'. $package->getName() .' is not a symfony bundle</error>', true);
             return;
         }
 
         // get package directory
-        $dir = 'vendor/' . $package->getName();
+        $dir = self::getRootDir() . 'vendor/' . $package->getName();
 
         // scan directory for Bundle file
         $needle = 'Bundle.php';
@@ -241,10 +263,12 @@ class RegisterCommand extends BaseCommand
 
         $fullyQualifiedNamespace = str_replace('/', '\\', $fullyQualifiedNamespace);
 
-        require_once 'app/AppKernel.php';
+        require_once self::getRootDir() . 'app/AppKernel.php';
 
         // create kernelManipulator
-        $kernelManipulator = new KernelManipulator(new \AppKernel('dev', true));
+        $kernelManipulator = self::$kernelManipulator ?
+            self::$kernelManipulator :
+            new KernelManipulator(new \AppKernel('dev', true));
 
         // write to the AppKernel.php
         return $kernelManipulator->addBundle($fullyQualifiedNamespace);
@@ -262,5 +286,18 @@ class RegisterCommand extends BaseCommand
         if ('symfony-bundle' === $package->getType()) {
             self::registerWithPackage($package, $output = $event->getIo());
         }
+    }
+
+    // make kernelManipulator mockable (only for testing)
+    public static function setKernelManipulator($kernelManipulator){
+        self::$kernelManipulator = $kernelManipulator;
+    }
+
+    public static function getRootDir(){
+        return self::$rootDir;
+    }
+
+    public static function setRootDir($dir){
+        self::$rootDir = $dir;
     }
 }
