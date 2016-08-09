@@ -30,7 +30,7 @@ class RegisterCommand extends BaseCommand
 
     private $runScripts = false;
     private static $kernelManipulator;
-    private static $rootDir = __DIR__.'/../../../../';
+    private static $rootDir = '';
 
     public function __construct()
     {
