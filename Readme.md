@@ -18,7 +18,7 @@ composer register fuzzyma/contao-database-commands-bundle
 ```
 
 If the package is not installed, the command will ask if you want to do that.
-Pass `--no-install` to skip this step.
+Pass `--install` or `--install=0` to skip the question and install/don't install the packages automatically.
 
 You can also pass the fully qualified namespace instead but make sure to pass the `namespace` option in this case:
 
