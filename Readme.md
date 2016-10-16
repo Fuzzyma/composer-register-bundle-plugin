@@ -43,4 +43,5 @@ Don't forget to configure your Bundle before using it!
 ## Options
 - `--install` installs packages without asking if not installed and
 - `--install=0` skips the installation of not-installed packages
+- `--namespace` use namespace of package instead of package name
 - All options from `composer install` (v1.2) are available and have the same effect
